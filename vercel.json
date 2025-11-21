@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "name": "unified-gorgias-api",
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
