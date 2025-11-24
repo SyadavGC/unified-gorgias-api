@@ -41,7 +41,7 @@ async function parseJSON(req) {
         
         resolve({
           fields,
-          file: null,
+          files: [], // No files in JSON requests
           formType
         });
       } catch (error) {
@@ -54,7 +54,7 @@ async function parseJSON(req) {
 }
 
 /**
- * Parse multipart/form-data request
+ * Parse multipart/form-data request - SUPPORTS MULTIPLE FILES
  */
 async function parseMultipartForm(req) {
   return new Promise((resolve, reject) => {
@@ -71,7 +71,7 @@ async function parseMultipartForm(req) {
         const boundaryMatch = contentType.match(/boundary=([^;]+)/);
 
         if (!boundaryMatch) {
-          return resolve({ fields: {}, file: null, formType: 'unknown' });
+          return resolve({ fields: {}, files: [], formType: 'unknown' });
         }
 
         const boundary = boundaryMatch[1];
@@ -91,7 +91,7 @@ async function parseMultipartForm(req) {
         }
 
         const fields = {};
-        let file = null;
+        const files = []; // Changed to array to support multiple files
 
         // Parse each part
         parts.forEach((part) => {
@@ -108,15 +108,21 @@ async function parseMultipartForm(req) {
           const contentTypeMatch = headerSection.match(/Content-Type:\s*([^\r\n]+)/i);
 
           if (filenameMatch && nameMatch) {
-            // This is a file
+            // This is a file - add to files array
             const fieldName = nameMatch[1];
-            // Accept 'file', 'companyDocument', or any file field
-            if (!file || fieldName === 'file' || fieldName === 'companyDocument') {
-              file = {
+            // Support multiple field names: 'file', 'files', 'companyDocuments', 'companyDocument'
+            if (
+              fieldName === 'file' || 
+              fieldName === 'files' || 
+              fieldName === 'companyDocuments' || 
+              fieldName === 'companyDocument'
+            ) {
+              files.push({
                 name: filenameMatch[1],
                 buffer: contentData,
-                contentType: contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream'
-              };
+                contentType: contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream',
+                fieldName: fieldName // Track which field it came from
+              });
             }
           } else if (nameMatch && !filenameMatch) {
             // Regular field
@@ -126,9 +132,9 @@ async function parseMultipartForm(req) {
           }
         });
 
-        const formType = fields.formType || detectFormType(fields, !!file);
+        const formType = fields.formType || detectFormType(fields, files.length > 0);
 
-        resolve({ fields, file, formType });
+        resolve({ fields, files, formType });
       } catch (error) {
         reject(new Error(`Multipart parse error: ${error.message}`));
       }
@@ -141,12 +147,12 @@ async function parseMultipartForm(req) {
 /**
  * Auto-detect form type based on fields
  */
-function detectFormType(data, hasFile = false) {
+function detectFormType(data, hasFiles = false) {
   // Check explicit formType
   if (data.formType) return data.formType;
 
   // B2B form indicators
-  if (hasFile || data.companyName || data.organizationType || data.companyDocument) {
+  if (hasFiles || data.companyName || data.organizationType || data.companyDocument) {
     return 'b2b-form';
   }
 
