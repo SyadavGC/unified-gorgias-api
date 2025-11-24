@@ -1,6 +1,6 @@
 /**
  * Unified Gorgias Ticket Creation API
- * Supports multiple form types with optional file attachments
+ * Supports multiple form types with MULTIPLE file attachments
  * 
  * Environment Variables Required:
  * - GORGIAS_SUBDOMAIN
@@ -11,7 +11,7 @@
  * - GORGIAS_SUPPORT_EMAIL (optional)
  */
 
-import { handleCORS, isOriginAllowed } from './utils/cors.js';
+import { handleCORS } from './utils/cors.js';
 import { parseRequest } from './utils/parser.js';
 import { uploadFileToGorgias } from './utils/fileUpload.js';
 import { formatTicketBody, generateSubject } from './utils/formatter.js';
@@ -32,14 +32,13 @@ export default async function handler(req, res) {
     console.log('=== Unified Gorgias API Request Started ===');
     console.log('Content-Type:', req.headers['content-type']);
 
-    // Parse request (handles both JSON and multipart)
-    const { fields, file, formType } = await parseRequest(req);
+    // Parse request (handles both JSON and multipart) - NOW RETURNS files ARRAY
+    const { fields, files, formType } = await parseRequest(req);
     
     console.log('✓ Parsed form type:', formType);
     console.log('✓ Parsed fields:', Object.keys(fields));
-    if (file) {
-      console.log(`✓ File: ${file.name} (${file.buffer.length} bytes)`);
-    }
+    console.log(`✓ Files: ${files.length} file(s)`);
+    files.forEach((f, i) => console.log(`  [${i + 1}] ${f.name} (${f.buffer.length} bytes)`));
 
     // Validate required fields
     const validation = validateRequiredFields(fields);
@@ -71,19 +70,19 @@ export default async function handler(req, res) {
 
     const authHeader = getBasicAuth(username, apiKey);
 
-    // Upload file if present
-    let uploadedFile = null;
-    if (file) {
-      console.log('=== Uploading file to Gorgias ===');
-      try {
-        uploadedFile = await uploadFileToGorgias(file, subdomain, authHeader);
-        console.log(`✓ File uploaded: ${uploadedFile.name}`);
-      } catch (uploadError) {
-        console.error('❌ File upload failed:', uploadError.message);
-        return res.status(500).json({
-          error: 'File upload failed',
-          details: uploadError.message
-        });
+    // Upload ALL files if present
+    const uploadedFiles = [];
+    if (files && files.length > 0) {
+      console.log(`=== Uploading ${files.length} file(s) to Gorgias ===`);
+      for (const file of files) {
+        try {
+          const uploaded = await uploadFileToGorgias(file, subdomain, authHeader);
+          uploadedFiles.push(uploaded);
+          console.log(`✓ File uploaded: ${uploaded.name}`);
+        } catch (uploadError) {
+          console.error(`❌ File upload failed for ${file.name}:`, uploadError.message);
+          // Continue with other files instead of failing completely
+        }
       }
     }
 
@@ -98,8 +97,8 @@ export default async function handler(req, res) {
     // Build subject
     const subject = generateSubject(fields, formType);
 
-    // Format body (both HTML and text)
-    const { bodyHtml, bodyText } = formatTicketBody(fields, formType, uploadedFile);
+    // Format body (both HTML and text) - NOW PASSES uploadedFiles ARRAY
+    const { bodyHtml, bodyText } = formatTicketBody(fields, formType, uploadedFiles);
 
     // Build tags
     let tags = [formType];
@@ -146,16 +145,15 @@ export default async function handler(req, res) {
       spam: false
     };
 
-    // Add attachment if file was uploaded
-    if (uploadedFile) {
-      ticketPayload.messages[0].attachments = [
-        {
-          url: uploadedFile.url,
-          name: uploadedFile.name,
-          size: uploadedFile.size,
-          content_type: uploadedFile.content_type
-        }
-      ];
+    // Add ALL attachments if files were uploaded
+    if (uploadedFiles.length > 0) {
+      ticketPayload.messages[0].attachments = uploadedFiles.map(file => ({
+        url: file.url,
+        name: file.name,
+        size: file.size,
+        content_type: file.content_type
+      }));
+      console.log(`✓ Added ${uploadedFiles.length} attachment(s) to ticket`);
     }
 
     console.log('✓ Ticket payload prepared');
@@ -203,11 +201,11 @@ export default async function handler(req, res) {
       ticketUri: ticketResponse.uri || `https://${subdomain}.gorgias.com/app/ticket/${ticketResponse.id}`,
       message: 'Ticket created successfully',
       formType: formType,
-      file: file ? {
-        name: file.name,
-        size: file.buffer.length,
+      files: uploadedFiles.map(f => ({
+        name: f.name,
+        size: f.size,
         uploaded: true
-      } : null
+      }))
     });
 
   } catch (error) {

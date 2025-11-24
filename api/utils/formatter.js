@@ -33,12 +33,12 @@ function humanLabel(key) {
 }
 
 /**
- * Format ticket body (HTML and text versions)
+ * Format ticket body (HTML and text versions) - SUPPORTS MULTIPLE FILES
  */
-export function formatTicketBody(fields, formType, uploadedFile = null) {
+export function formatTicketBody(fields, formType, uploadedFiles = []) {
   const excludeFields = [
     'email', 'formType', 'tags', 'priority', 'status', 'subject',
-    'body', 'message', 'comments', 'file', 'companyDocument'
+    'body', 'message', 'comments', 'file', 'companyDocument', 'companyDocuments'
   ];
 
   // Build HTML version
@@ -116,10 +116,12 @@ export function formatTicketBody(fields, formType, uploadedFile = null) {
     bodyHtml += `<div style="white-space: pre-wrap; background: #f5f5f5; padding: 12px; border-radius: 4px;">${escapeHtml(message)}</div>`;
   }
 
-  // Attachment
-  if (uploadedFile) {
-    bodyHtml += '<h3 style="color: #134252; margin-top: 20px; margin-bottom: 10px;">Attached File</h3>';
-    bodyHtml += `<p><a href="${escapeHtml(uploadedFile.url)}" style="color: #21808D; text-decoration: none;">📥 Download ${escapeHtml(uploadedFile.name)}</a></p>`;
+  // MULTIPLE Attachments
+  if (uploadedFiles && uploadedFiles.length > 0) {
+    bodyHtml += '<h3 style="color: #134252; margin-top: 20px; margin-bottom: 10px;">Attached Files</h3>';
+    uploadedFiles.forEach((file, index) => {
+      bodyHtml += `<p><a href="${escapeHtml(file.url)}" style="color: #21808D; text-decoration: none;">📥 Download ${escapeHtml(file.name)}</a></p>`;
+    });
   }
 
   bodyHtml += '</div>';
@@ -159,10 +161,12 @@ export function formatTicketBody(fields, formType, uploadedFile = null) {
     bodyText += `${message}\n\n`;
   }
 
-  if (uploadedFile) {
-    bodyText += 'ATTACHED FILE\n';
-    bodyText += `${uploadedFile.name}\n`;
-    bodyText += `Download: ${uploadedFile.url}\n`;
+  if (uploadedFiles && uploadedFiles.length > 0) {
+    bodyText += 'ATTACHED FILES\n';
+    uploadedFiles.forEach((file, index) => {
+      bodyText += `${index + 1}. ${file.name}\n`;
+      bodyText += `   Download: ${file.url}\n`;
+    });
   }
 
   return { bodyHtml, bodyText };
